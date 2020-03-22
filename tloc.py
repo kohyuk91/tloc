@@ -170,11 +170,12 @@ def center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tl
 
     mc.expression(s=exp, object=center3dCamShape)
 
-def main(depth=5000.0, zoom_history=True):
+def main(depth=5000.0, do_center3d=True, zoom_history=True):
     """
     Creates a locator that is ready for triangulation.
     """
 
+    # Delete Center3D nodes
     if mc.objExists("*centroid*") == True:
         mc.delete('centroid_*','*_Center3D_*')
         return
@@ -188,7 +189,16 @@ def main(depth=5000.0, zoom_history=True):
     tlocShape = mc.listRelatives(tlocTrans, shapes=True)[0]
     tlocGrp = mc.group(tlocTrans, name="{}_grp_#".format(tlocTrans))
 
-    # Set TLOC Color ##
+    # Add Depth Attribute to TLOC
+    mc.addAttr(tlocTrans, shortName="depth", longName="Depth", attributeType="float", defaultValue=1)
+    mc.setAttr(tlocTrans+".depth", keyable=True)
+
+    # Connect Depth Attribute to ScaleXYZ
+    mc.connectAttr(tlocTrans+".depth", tlocTrans+".sx")
+    mc.connectAttr(tlocTrans+".depth", tlocTrans+".sy")
+    mc.connectAttr(tlocTrans+".depth", tlocTrans+".sz")
+
+    # Set TLOC Color
     mc.setAttr(tlocShape+".overrideEnabled", 1)
     mc.setAttr(tlocShape+".overrideColor", random_index)
 
@@ -236,18 +246,23 @@ def main(depth=5000.0, zoom_history=True):
     mc.expression(s="""
                     {0}.lsx = 1/{1}.sx;
                     {0}.lsy = 1/{1}.sy;
-                    {0}.lsz = 1/{1}.sz;
+                    {0}.lsz = 0;
                     """.format(tlocShape, tlocGrp), object=tlocGrp)
 
-    # Center3D
-    if mc.getAttr(active3dViewCamShape+".panZoomEnabled") == 1 or zoom_history == True:
-        active3dViewCamZoom = mc.getAttr(active3dViewCamShape+".zoom")
-    else:
-        active3dViewCamZoom = 1.0
-    center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tlocTrans)
-
-    # Mark Creation Frame
+    # Just for marking the Creation Frame
     mc.setKeyframe(tlocTrans+".rx", value=0, time=[currentTime])
+
+
+    # Center3D
+    if do_center3d == False:
+        pass
+    else:
+        if mc.getAttr(active3dViewCamShape+".panZoomEnabled") == 1 or zoom_history == True:
+            active3dViewCamZoom = mc.getAttr(active3dViewCamShape+".zoom")
+        else:
+            active3dViewCamZoom = 1.0
+        center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tlocTrans)
+
 
     # Select TLOC
     mc.select(tlocTrans)

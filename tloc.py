@@ -28,7 +28,9 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#
 # Shout out to Frank Illing for the "World Space to Image Space" expression.
+#
 
 # Documentation
 """
@@ -44,7 +46,7 @@ TLOC helps you to triangulate points with ease in Maya.
 1. Hover the cursor above the viewport and execute the script with a HOTKEY(e.g. Alt + Shift + X)!
 2. You have created a "Reference Frame"
 3. "Center3D camera" is created and centered to the locator.
-4. Move to another keyframe(or camera), and scale the locator until it matches with the "Reference Frame".
+4. Move to another keyframe(or camera), and adjust the "Depth" attribute in TLOC until it matches with the "Reference Frame".
 5. Press HOTKEY to remove the "Center3D camera".
 """
 
@@ -56,6 +58,10 @@ import tloc
 reload(tloc)
 tloc.main()
 """
+
+# Versions
+# 0.0.1 - Initial Release
+
 
 import maya.cmds as mc
 import maya.OpenMaya as om
@@ -80,6 +86,8 @@ def getMDagPath(name):
 def center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tlocTrans):
     """
     Centers the viewport to TLOC.
+
+    * Some Notes *
     * This may not work properly if the Image Plane's Aspect Ratio and Device Aspect Ratio(in Render Setting) does not match.
     * Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 1920 X 1080 (1.778) --> O
     * Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 960 X 540 (1.778) --> O
@@ -174,9 +182,14 @@ def center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tl
 
     mc.expression(s=exp, object=center3dCamShape)
 
-def main(depth=100.0, do_center3d=True, zoom_history=True):
+def main(depth=100.0, do_center3d=True, zoom_history=False):
     """
-    Creates a locator that is ready for triangulation.
+    Creates TLOC and Center3D camera to do point triangulation and quality check at the same time.
+
+    * Some Notes *
+    You might not see the locator in the following cases...
+    1. Image Plane is to close to the camera. --> Give the "Depth" attribute a higher value.
+    2. Near & Far clipping plane too low.
     """
 
     # Delete Center3D nodes
@@ -264,7 +277,7 @@ def main(depth=100.0, do_center3d=True, zoom_history=True):
         if mc.getAttr(active3dViewCamShape+".panZoomEnabled") == 1 or zoom_history == True:
             active3dViewCamZoom = mc.getAttr(active3dViewCamShape+".zoom")
         else:
-            active3dViewCamZoom = 1.0
+            active3dViewCamZoom = 0.20 # You have to zoom in for precision anyway...
         center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tlocTrans)
 
 

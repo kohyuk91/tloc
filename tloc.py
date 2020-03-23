@@ -80,6 +80,10 @@ def getMDagPath(name):
 def center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tlocTrans):
     """
     Centers the viewport to TLOC.
+    * This may not work properly if the Image Plane's Aspect Ratio and Device Aspect Ratio(in Render Setting) does not match.
+    * Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 1920 X 1080 (1.778) --> O
+    * Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 960 X 540 (1.778) --> O
+    * Image Plane Size: 1920 X 1080 (1.778) and  Image Size: 3000 X 1500 (1.5) --> X
     """
     # Set Imageplane to show in "All Views"
     try:
@@ -170,7 +174,7 @@ def center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tl
 
     mc.expression(s=exp, object=center3dCamShape)
 
-def main(depth=5000.0, do_center3d=True, zoom_history=True):
+def main(depth=100.0, do_center3d=True, zoom_history=True):
     """
     Creates a locator that is ready for triangulation.
     """

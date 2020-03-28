@@ -45,9 +45,9 @@ TLOC helps you to triangulate points with ease in Maya.
 """
 1. Hover the cursor above the viewport and execute the script with a HOTKEY(e.g. Alt + Shift + X)!
 2. You have created a "Reference Frame"
-3. "Center3D camera" is created and centered to the locator.
-4. Move to another keyframe(or camera), and adjust the "Depth" attribute in TLOC until it matches with the "Reference Frame".
-5. Press HOTKEY to remove the "Center3D camera".
+3. "Center3D camera" is created and centered to TLOC.
+4. Move to another keyframe(or camera), and adjust TLOC's depth attribute until it matches with the "Reference Frame".
+5. Press the same HOTKEY to remove the "Center3D camera".
 """
 
 # Usage
@@ -60,6 +60,7 @@ tloc.main()
 """
 
 # Versions
+# 0.0.2 - No need to select depth attribute in channelbox.
 # 0.0.1 - Initial Release
 
 
@@ -88,10 +89,10 @@ def center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tl
     Centers the viewport to TLOC.
 
     * Some Notes *
-    * This may not work properly if the Image Plane's Aspect Ratio and Device Aspect Ratio(in Render Setting) does not match.
-    * Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 1920 X 1080 (1.778) --> O
-    * Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 960 X 540 (1.778) --> O
-    * Image Plane Size: 1920 X 1080 (1.778) and  Image Size: 3000 X 1500 (1.5) --> X
+    This may not work properly if the Image Plane's Aspect Ratio and Device Aspect Ratio(in Render Setting) does not match.
+    Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 1920 X 1080 (1.778) --> O
+    Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 960 X 540 (1.778) --> O
+    Image Plane Size: 1920 X 1080 (1.778) and  Image Size: 3000 X 1500 (1.5) --> X
     """
     # Set Imageplane to show in "All Views"
     try:
@@ -182,14 +183,15 @@ def center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tl
 
     mc.expression(s=exp, object=center3dCamShape)
 
+
 def main(depth=100.0, do_center3d=True, zoom_history=False):
     """
-    Creates TLOC and Center3D camera to do point triangulation and quality check at the same time.
+    Creates "TLOC" and "Center3D camera".
+    You can do point triangulation and quality check at the same time.
 
     * Some Notes *
-    You might not see the locator in the following cases...
-    1. Image Plane is to close to the camera. --> Give the "Depth" attribute a higher value.
-    2. Near & Far clipping plane too low.
+    1. You might not see TLOC if the image plane is to close to the camera. Give the image plane's "Depth" a higher value to fix this problem.
+    2. The active view camera's "Near Clip Plane" value determines the initial size of TLOC. Something between 0.1 and 1 is a good value.
     """
 
     # Delete Center3D nodes
@@ -201,13 +203,14 @@ def main(depth=100.0, do_center3d=True, zoom_history=False):
     indexList = [6,9,13,14,16,17,18]
     random_index = random.choice(indexList)
 
+
     # Create TLOC
     tlocTrans = mc.spaceLocator(name="tloc_{}f_#".format(currentTime))[0]
     tlocShape = mc.listRelatives(tlocTrans, shapes=True)[0]
     tlocGrp = mc.group(tlocTrans, name="{}_grp_#".format(tlocTrans))
 
     # Add Depth Attribute to TLOC
-    mc.addAttr(tlocTrans, shortName="depth", longName="Depth", attributeType="float", defaultValue=1)
+    mc.addAttr(tlocTrans, shortName="depth", longName="Depth", attributeType="float", defaultValue=depth)
     mc.setAttr(tlocTrans+".depth", keyable=True)
 
     # Connect Depth Attribute to ScaleXYZ
@@ -254,17 +257,25 @@ def main(depth=100.0, do_center3d=True, zoom_history=False):
     active3dViewCamPos = mc.xform(active3dViewCamTrans, q=True, worldSpace=True, translation=True)
     mc.xform(tlocGrp, worldSpace=True, pivots=[active3dViewCamPos[0], active3dViewCamPos[1], active3dViewCamPos[2]])
 
+    # Lock TLOC GRP Translate & Rotate attributes
+    axisList = ["x", "y", "z"]
+    attrList = ["t", "r"]
+    for axis in axisList:
+        for attr in attrList:
+            mc.setAttr("{0}.{1}{2}".format(tlocGrp, attr, axis), lock=True)
+
+
     # Set TLOC Depth & Scale
     mc.expression(s="""
-                    {0}.sx = {1}.sx * {2};
-                    {0}.sy = {1}.sy * {2};
-                    {0}.sz = {1}.sz * {2};
-                    """.format(tlocGrp, tlocTrans, depth), object=tlocGrp)
+                    {0}.sx = {1}.sx;
+                    {0}.sy = {1}.sy;
+                    {0}.sz = {1}.sz;
+                    """.format(tlocGrp, tlocTrans), object=tlocGrp)
     mc.expression(s="""
-                    {0}.lsx = 1/{1}.sx;
-                    {0}.lsy = 1/{1}.sy;
+                    {0}.lsx = 1 / {1}.sx / {2};
+                    {0}.lsy = 1 / {1}.sy / {2};
                     {0}.lsz = 0;
-                    """.format(tlocShape, tlocGrp), object=tlocGrp)
+                    """.format(tlocShape, tlocGrp, depth**0.5), object=tlocGrp)
 
     # Just for marking the Creation Frame
     mc.setKeyframe(tlocTrans+".rx", value=0, time=[currentTime])
@@ -285,3 +296,10 @@ def main(depth=100.0, do_center3d=True, zoom_history=False):
     mc.select(tlocTrans)
     mc.evalDeferred("import maya.cmds as mc")
     mc.evalDeferred("mc.outlinerEditor('outlinerPanel1', edit=True, showSelected=True)")
+
+    # Set Tool to "Drag Attr Context"
+    dragAttrContextName = "dragAttrContext"
+    if not mc.dragAttrContext(dragAttrContextName, ex=True):
+        mc.dragAttrContext(dragAttrContextName)
+    mc.dragAttrContext(dragAttrContextName, e=True, ct=tlocTrans+".depth")
+    mc.setToolTo(dragAttrContextName)

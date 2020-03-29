@@ -60,6 +60,7 @@ tloc.main()
 """
 
 # Versions
+# 0.0.3 - TLOC scale continuity.
 # 0.0.2 - No need to select depth attribute in channelbox.
 # 0.0.1 - Initial Release
 
@@ -73,15 +74,6 @@ except:
     from PySide2 import QtGui, QtWidgets, QtCore
 
 import random
-
-
-def getMDagPath(name):
-    sel_list = om.MSelectionList()
-    sel_list.add(name)
-    dag = om.MDagPath()
-    component = om.MObject()
-    sel_list.getDagPath(0, dag, component)
-    return dag
 
 
 def center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tlocTrans):
@@ -184,20 +176,65 @@ def center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tl
     mc.expression(s=exp, object=center3dCamShape)
 
 
-def main(depth=100.0, do_center3d=True, zoom_history=False):
+def dragAttrContext(tlocTrans):
+    dragAttrContextName = "dragAttrContext"
+    if not mc.dragAttrContext(dragAttrContextName, ex=True):
+        mc.dragAttrContext(dragAttrContextName)
+    mc.dragAttrContext(dragAttrContextName, e=True, ct=tlocTrans+".depth")
+    mc.setToolTo(dragAttrContextName)
+
+
+def getActive3dViewCam():
+    active3dView = omui.M3dView.active3dView()
+    active3dViewCamDagPath = om.MDagPath()
+    active3dView.getCamera(active3dViewCamDagPath)
+    active3dViewCamShape = active3dViewCamDagPath.fullPathName()
+    active3dViewCamTrans = mc.listRelatives(active3dViewCamShape, parent=True, fullPath=True)[0]
+
+    return active3dViewCamShape, active3dViewCamTrans
+
+
+def main(depth=100.0, tempNearClipPlane=5, center3d_zoom=0.2, zoom_history=False):
     """
     Creates "TLOC" and "Center3D camera".
     You can do point triangulation and quality check at the same time.
 
-    * Some Notes *
-    1. You might not see TLOC if the image plane is to close to the camera. Give the image plane's "Depth" a higher value to fix this problem.
-    2. The active view camera's "Near Clip Plane" value determines the initial size of TLOC. Something between 0.1 and 1 is a good value.
+    * Note *
+    You might not see TLOC if the image plane is to close to the camera. Give the image plane's "Depth" a higher value to fix this problem.
     """
 
     # Delete Center3D nodes
     if mc.objExists("*centroid*") == True:
         mc.delete('centroid_*','*_Center3D_*')
         return
+
+    """
+    Rezoom on TLOC (WIP)
+
+    # Check if one object is selected
+    sel = mc.ls(selection=True, long=True)
+
+    if len(sel) > 1:
+        mc.warning("Select only 1 item.")
+        return
+
+    # If TLOC is selected do "center3D" and "dragAttrContext"
+    object_type = mc.objectType(mc.listRelatives(sel[0], fullPath=True, shapes=True)[0])
+    if object_type == "locator" and "tloc" in sel[0]:
+        # Get Active 3D View Camera
+        active3dViewCamShape, active3dViewCamTrans = getActive3dViewCam()
+
+        # Center3D on TLOC
+        if mc.getAttr(active3dViewCamShape+".panZoomEnabled") == 1 or zoom_history:
+            active3dViewCamZoom = mc.getAttr(active3dViewCamShape+".zoom")
+        else:
+            active3dViewCamZoom = center3d_zoom # You have to zoom in for precision anyway...
+        center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, sel[0])
+
+        # Set Tool to "Drag Attr Context"
+        dragAttrContext(sel[0])
+        return
+    """
 
     currentTime = int(mc.currentTime(q=True))
     indexList = [6,9,13,14,16,17,18]
@@ -207,7 +244,7 @@ def main(depth=100.0, do_center3d=True, zoom_history=False):
     # Create TLOC
     tlocTrans = mc.spaceLocator(name="tloc_{}f_#".format(currentTime))[0]
     tlocShape = mc.listRelatives(tlocTrans, shapes=True)[0]
-    tlocGrp = mc.group(tlocTrans, name="{}_grp_#".format(tlocTrans))
+    tlocGrp = mc.group(tlocTrans, name="{}_grp".format(tlocTrans))
 
     # Add Depth Attribute to TLOC
     mc.addAttr(tlocTrans, shortName="depth", longName="Depth", attributeType="float", defaultValue=depth)
@@ -224,11 +261,19 @@ def main(depth=100.0, do_center3d=True, zoom_history=False):
 
 
     # Get Active 3D View Camera
-    active3dView = omui.M3dView.active3dView()
-    active3dViewCamDagPath = om.MDagPath()
-    active3dView.getCamera(active3dViewCamDagPath)
-    active3dViewCamShape = active3dViewCamDagPath.fullPathName()
-    active3dViewCamTrans = mc.listRelatives(active3dViewCamShape, parent=True, fullPath=True)[0]
+    active3dViewCamShape, active3dViewCamTrans = getActive3dViewCam()
+
+
+    # Store Near Clip Plane value
+    nearClipPlaneStored = mc.getAttr(active3dViewCamShape+".nearClipPlane")
+
+    # Temporarily set Near Clip Plane
+    mc.setAttr(active3dViewCamShape+".nearClipPlane", tempNearClipPlane)
+    mc.refresh(force=True) # Need to refresh the viewport to apply the new near clip plane value.
+
+    # Get world space scale of Active 3D View Camera
+    active3dViewCamWorldSpaceScale = mc.xform(active3dViewCamTrans, q=True, worldSpace=True, scale=True)[0] # Just return sx
+
 
     # Get Cursor Position
     cursorPos = QtGui.QCursor.pos()
@@ -241,7 +286,7 @@ def main(depth=100.0, do_center3d=True, zoom_history=False):
 
     omui.M3dView().active3dView().viewToWorld(
         relpos.x(),
-        widgetHeight - relpos.y(),
+        widgetHeight - relpos.y(), # The relpos.y() alone returns a mirrored position. Must subtract it with widgetHeight.
         position,  # world point
         direction)
 
@@ -257,12 +302,17 @@ def main(depth=100.0, do_center3d=True, zoom_history=False):
     active3dViewCamPos = mc.xform(active3dViewCamTrans, q=True, worldSpace=True, translation=True)
     mc.xform(tlocGrp, worldSpace=True, pivots=[active3dViewCamPos[0], active3dViewCamPos[1], active3dViewCamPos[2]])
 
-    # Lock TLOC GRP Translate & Rotate attributes
+    """
+    Eventually TLOC GRP has to go inside camera or object point group.
+    Locking translation and rotation attributes make things complicated.
+
+    # Lock TLOC GRP translation & rotation attributes
     axisList = ["x", "y", "z"]
     attrList = ["t", "r"]
     for axis in axisList:
         for attr in attrList:
             mc.setAttr("{0}.{1}{2}".format(tlocGrp, attr, axis), lock=True)
+    """
 
 
     # Set TLOC Depth & Scale
@@ -272,34 +322,29 @@ def main(depth=100.0, do_center3d=True, zoom_history=False):
                     {0}.sz = {1}.sz;
                     """.format(tlocGrp, tlocTrans), object=tlocGrp)
     mc.expression(s="""
-                    {0}.lsx = 1 / {1}.sx / {2};
-                    {0}.lsy = 1 / {1}.sy / {2};
+                    {0}.lsx = 1 / {1}.sx / {2} * {3};
+                    {0}.lsy = 1 / {1}.sy / {2} * {3};
                     {0}.lsz = 0;
-                    """.format(tlocShape, tlocGrp, depth**0.5), object=tlocGrp)
+                    """.format(tlocShape, tlocGrp, depth**0.5, active3dViewCamWorldSpaceScale), object=tlocGrp)
 
     # Just for marking the Creation Frame
     mc.setKeyframe(tlocTrans+".rx", value=0, time=[currentTime])
 
 
-    # Center3D
-    if do_center3d == False:
-        pass
+    # Center3D on TLOC
+    if mc.getAttr(active3dViewCamShape+".panZoomEnabled") == 1 or zoom_history:
+        active3dViewCamZoom = mc.getAttr(active3dViewCamShape+".zoom")
     else:
-        if mc.getAttr(active3dViewCamShape+".panZoomEnabled") == 1 or zoom_history == True:
-            active3dViewCamZoom = mc.getAttr(active3dViewCamShape+".zoom")
-        else:
-            active3dViewCamZoom = 0.20 # You have to zoom in for precision anyway...
-        center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tlocTrans)
+        active3dViewCamZoom = center3d_zoom # You have to zoom in for precision anyway...
+    center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tlocTrans)
 
 
     # Select TLOC
     mc.select(tlocTrans)
-    mc.evalDeferred("import maya.cmds as mc")
-    mc.evalDeferred("mc.outlinerEditor('outlinerPanel1', edit=True, showSelected=True)")
+    mc.evalDeferred("import maya.cmds as mc;mc.outlinerEditor('outlinerPanel1', edit=True, showSelected=True)")
 
     # Set Tool to "Drag Attr Context"
-    dragAttrContextName = "dragAttrContext"
-    if not mc.dragAttrContext(dragAttrContextName, ex=True):
-        mc.dragAttrContext(dragAttrContextName)
-    mc.dragAttrContext(dragAttrContextName, e=True, ct=tlocTrans+".depth")
-    mc.setToolTo(dragAttrContextName)
+    dragAttrContext(tlocTrans)
+
+    # Set Near Clip Plane back to stored value
+    mc.setAttr(active3dViewCamShape+".nearClipPlane", nearClipPlaneStored)

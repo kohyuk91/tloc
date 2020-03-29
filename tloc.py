@@ -342,6 +342,9 @@ def main():
         lastParent = getClipboardText()
         if lastParent != "":
             mc.select(lastParent, replace=True)
+            return
+
+        mc.select(clear=True)
         return
 
     # Get Active 3D View Camera

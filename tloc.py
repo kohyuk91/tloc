@@ -39,6 +39,8 @@
 Manual point triangulation is great for accurate set reconstruction.
 However doing more than 100 point triangulations by hand is a not-so-fun task.
 TLOC helps you to triangulate points with ease in Maya.
+
+https://github.com/kohyuk91/tloc
 """
 
 # Basic Workflow
@@ -60,6 +62,7 @@ tloc.main()
 """
 
 # Versions
+# 0.0.4 - Script will run differently based on selection.
 # 0.0.3 - TLOC scale continuity.
 # 0.0.2 - No need to select depth attribute in channelbox.
 # 0.0.1 - Initial Release
@@ -76,11 +79,11 @@ except:
 import random
 
 
-def center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tlocTrans):
+def center3d(active3dViewCamShape, active3dViewCamTrans, tlocTrans, zoom=0.2):
     """
     Centers the viewport to TLOC.
 
-    * Some Notes *
+    < Note >
     This may not work properly if the Image Plane's Aspect Ratio and Device Aspect Ratio(in Render Setting) does not match.
     Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 1920 X 1080 (1.778) --> O
     Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 960 X 540 (1.778) --> O
@@ -109,7 +112,7 @@ def center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tl
 
     # Set Zoom
     mc.setAttr(center3dCamShape+".panZoomEnabled", 1)
-    mc.setAttr(center3dCamShape+".zoom", active3dViewCamZoom)
+    mc.setAttr(center3dCamShape+".zoom", zoom)
 
     # Sync Shape Attributes. Active 3D View Cam & Center 3D Cam
     mc.connectAttr(active3dViewCamShape+'.hfa' , center3dCamShape+'.hfa')
@@ -194,54 +197,20 @@ def getActive3dViewCam():
     return active3dViewCamShape, active3dViewCamTrans
 
 
-def main(depth=100.0, tempNearClipPlane=5, center3d_zoom=0.2, zoom_history=False):
+def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=100.0, tempNearClipPlane=5, parent=""):
     """
     Creates "TLOC" and "Center3D camera".
     You can do point triangulation and quality check at the same time.
 
-    * Note *
+    < Note >
     You might not see TLOC if the image plane is to close to the camera. Give the image plane's "Depth" a higher value to fix this problem.
     """
-
-    # Delete Center3D nodes
-    if mc.objExists("*centroid*") == True:
-        mc.delete('centroid_*','*_Center3D_*')
-        return
-
-    """
-    Rezoom on TLOC (WIP)
-
-    # Check if one object is selected
-    sel = mc.ls(selection=True, long=True)
-
-    if len(sel) > 1:
-        mc.warning("Select only 1 item.")
-        return
-
-    # If TLOC is selected do "center3D" and "dragAttrContext"
-    object_type = mc.objectType(mc.listRelatives(sel[0], fullPath=True, shapes=True)[0])
-    if object_type == "locator" and "tloc" in sel[0]:
-        # Get Active 3D View Camera
-        active3dViewCamShape, active3dViewCamTrans = getActive3dViewCam()
-
-        # Center3D on TLOC
-        if mc.getAttr(active3dViewCamShape+".panZoomEnabled") == 1 or zoom_history:
-            active3dViewCamZoom = mc.getAttr(active3dViewCamShape+".zoom")
-        else:
-            active3dViewCamZoom = center3d_zoom # You have to zoom in for precision anyway...
-        center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, sel[0])
-
-        # Set Tool to "Drag Attr Context"
-        dragAttrContext(sel[0])
-        return
-    """
-
     currentTime = int(mc.currentTime(q=True))
     indexList = [6,9,13,14,16,17,18]
     random_index = random.choice(indexList)
 
 
-    # Create TLOC
+    # Create TLOC & TLOC GRP
     tlocTrans = mc.spaceLocator(name="tloc_{}f_#".format(currentTime))[0]
     tlocShape = mc.listRelatives(tlocTrans, shapes=True)[0]
     tlocGrp = mc.group(tlocTrans, name="{}_grp".format(tlocTrans))
@@ -302,9 +271,16 @@ def main(depth=100.0, tempNearClipPlane=5, center3d_zoom=0.2, zoom_history=False
     active3dViewCamPos = mc.xform(active3dViewCamTrans, q=True, worldSpace=True, translation=True)
     mc.xform(tlocGrp, worldSpace=True, pivots=[active3dViewCamPos[0], active3dViewCamPos[1], active3dViewCamPos[2]])
 
+    # Move TLOC GRP under parent
+    if parent != "":
+        mc.parent(tlocGrp, parent)
+
+    clipboard = QtWidgets.QApplication.clipboard()
+    clipboard.setText(parent)
+
     """
     Eventually TLOC GRP has to go inside camera or object point group.
-    Locking translation and rotation attributes make things complicated.
+    Locking translation and rotation attributes can make things complicated.
 
     # Lock TLOC GRP translation & rotation attributes
     axisList = ["x", "y", "z"]
@@ -331,20 +307,58 @@ def main(depth=100.0, tempNearClipPlane=5, center3d_zoom=0.2, zoom_history=False
     mc.setKeyframe(tlocTrans+".rx", value=0, time=[currentTime])
 
 
-    # Center3D on TLOC
-    if mc.getAttr(active3dViewCamShape+".panZoomEnabled") == 1 or zoom_history:
-        active3dViewCamZoom = mc.getAttr(active3dViewCamShape+".zoom")
-    else:
-        active3dViewCamZoom = center3d_zoom # You have to zoom in for precision anyway...
-    center3d(active3dViewCamShape, active3dViewCamTrans, active3dViewCamZoom, tlocTrans)
-
-
-    # Select TLOC
-    mc.select(tlocTrans)
-    mc.evalDeferred("import maya.cmds as mc;mc.outlinerEditor('outlinerPanel1', edit=True, showSelected=True)")
-
-    # Set Tool to "Drag Attr Context"
-    dragAttrContext(tlocTrans)
+    # Set to point triangulation mode
+    pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, tlocTrans)
 
     # Set Near Clip Plane back to stored value
     mc.setAttr(active3dViewCamShape+".nearClipPlane", nearClipPlaneStored)
+
+
+def pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, tlocTrans):
+    # Center3D on TLOC
+    center3d(active3dViewCamShape, active3dViewCamTrans, tlocTrans)
+    # Select TLOC
+    mc.select(tlocTrans)
+    mc.evalDeferred("import maya.cmds as mc;mc.outlinerEditor('outlinerPanel1', edit=True, showSelected=True)")
+    # Set Tool to "Drag Attr Context"
+    dragAttrContext(tlocTrans)
+
+
+def main():
+    # Delete Center3D nodes
+    if mc.objExists("*centroid*") == True:
+        mc.delete('centroid_*','*_Center3D_*')
+
+        clipboard = QtWidgets.QApplication.clipboard()
+        lastParent = clipboard.text()
+
+        if lastParent != "":
+            mc.select(lastParent, replace=True)
+            return
+
+        return
+
+    active3dViewCamShape, active3dViewCamTrans = getActive3dViewCam()
+
+    sel = mc.ls(selection=True, long=True)
+
+    if len(sel) == 0: # If nothing is selected and you press the TLOC hotkey, a new TLOC will be created.
+        createTloc(active3dViewCamShape, active3dViewCamTrans)
+        return
+    elif len(sel) == 1: # If a single item is selected...
+        try:
+            object_type = mc.objectType(mc.listRelatives(sel[0], fullPath=True, shapes=True)[0])
+        except:
+            object_type = None
+        if object_type == "locator" and "tloc" in sel[0]: # and it is TLOC. Jumps to point triangulation mode(Center3D & Drag Attr Context).
+            pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, sel[0])
+            return
+        elif object_type == "imagePlane": # and it is image plane. A new TLOC will be created.
+            createTloc(active3dViewCamShape, active3dViewCamTrans)
+            return
+        else: # and it is something other than TLOC. A new TLOC will be created and parented to the selected item.
+            createTloc(active3dViewCamShape, active3dViewCamTrans, parent=sel[0])
+            return
+    elif len(sel) > 1:
+        mc.warning("Too many objects selected. Select 0 or 1 item.")
+        return

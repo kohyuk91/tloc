@@ -197,13 +197,13 @@ def getActive3dViewCam():
     return active3dViewCamShape, active3dViewCamTrans
 
 
-def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=100.0, tempNearClipPlane=5, parent=""):
+def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=100.0, nearClipPlane=5, parent=""):
     """
     Creates "TLOC" and "Center3D camera".
     You can do point triangulation and quality check at the same time.
 
     < Note >
-    You might not see TLOC if the image plane is to close to the camera. Give the image plane's "Depth" a higher value to fix this problem.
+    - You might not see TLOC if the image plane is to close to the camera. Give the image plane's "Depth" a higher value to fix this problem.
     """
     currentTime = int(mc.currentTime(q=True))
     indexList = [6,9,13,14,16,17,18]
@@ -237,7 +237,7 @@ def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=100.0, tempNear
     nearClipPlaneStored = mc.getAttr(active3dViewCamShape+".nearClipPlane")
 
     # Temporarily set Near Clip Plane
-    mc.setAttr(active3dViewCamShape+".nearClipPlane", tempNearClipPlane)
+    mc.setAttr(active3dViewCamShape+".nearClipPlane", nearClipPlane)
     mc.refresh(force=True) # Need to refresh the viewport to apply the new near clip plane value.
 
     # Get world space scale of Active 3D View Camera
@@ -275,8 +275,7 @@ def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=100.0, tempNear
     if parent != "":
         mc.parent(tlocGrp, parent)
 
-    clipboard = QtWidgets.QApplication.clipboard()
-    clipboard.setText(parent)
+    setClipboardText(parent)
 
     """
     Eventually TLOC GRP has to go inside camera or object point group.
@@ -324,22 +323,31 @@ def pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, tlocTrans
     dragAttrContext(tlocTrans)
 
 
+def getClipboardText():
+    clipboard = QtWidgets.QApplication.clipboard()
+    text = clipboard.text()
+    return text
+
+
+def setClipboardText(text):
+    clipboard = QtWidgets.QApplication.clipboard()
+    clipboard.setText(text)
+
+
 def main():
     # Delete Center3D nodes
     if mc.objExists("*centroid*") == True:
         mc.delete('centroid_*','*_Center3D_*')
 
-        clipboard = QtWidgets.QApplication.clipboard()
-        lastParent = clipboard.text()
-
+        lastParent = getClipboardText()
         if lastParent != "":
             mc.select(lastParent, replace=True)
-            return
-
         return
 
+    # Get Active 3D View Camera
     active3dViewCamShape, active3dViewCamTrans = getActive3dViewCam()
 
+    # Get selection
     sel = mc.ls(selection=True, long=True)
 
     if len(sel) == 0: # If nothing is selected and you press the TLOC hotkey, a new TLOC will be created.
@@ -350,7 +358,7 @@ def main():
             object_type = mc.objectType(mc.listRelatives(sel[0], fullPath=True, shapes=True)[0])
         except:
             object_type = None
-        if object_type == "locator" and "tloc" in sel[0]: # and it is TLOC. Jumps to point triangulation mode(Center3D & Drag Attr Context).
+        if object_type == "locator" and "tloc" in sel[0]: # and it is TLOC. Jump to point triangulation mode(Center3D & Drag Attr Context).
             pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, sel[0])
             return
         elif object_type == "imagePlane": # and it is image plane. A new TLOC will be created.

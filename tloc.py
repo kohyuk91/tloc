@@ -197,7 +197,28 @@ def getActive3dViewCam():
     return active3dViewCamShape, active3dViewCamTrans
 
 
-def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=100.0, nearClipPlane=5, parent=""):
+def pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, tlocTrans):
+    # Center3D on TLOC
+    center3d(active3dViewCamShape, active3dViewCamTrans, tlocTrans)
+    # Select TLOC
+    mc.select(tlocTrans)
+    mc.evalDeferred("import maya.cmds as mc;mc.outlinerEditor('outlinerPanel1', edit=True, showSelected=True)")
+    # Set Tool to "Drag Attr Context"
+    dragAttrContext(tlocTrans)
+
+
+def getClipboardText():
+    clipboard = QtWidgets.QApplication.clipboard()
+    text = clipboard.text()
+    return text
+
+
+def setClipboardText(text):
+    clipboard = QtWidgets.QApplication.clipboard()
+    clipboard.setText(text)
+
+
+def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=10, parent=""):
     """
     Creates "TLOC" and "Center3D camera".
     You can do point triangulation and quality check at the same time.
@@ -237,7 +258,7 @@ def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=100.0, nearClip
     nearClipPlaneStored = mc.getAttr(active3dViewCamShape+".nearClipPlane")
 
     # Temporarily set Near Clip Plane
-    mc.setAttr(active3dViewCamShape+".nearClipPlane", nearClipPlane)
+    mc.setAttr(active3dViewCamShape+".nearClipPlane", depth)
     mc.refresh(force=True) # Need to refresh the viewport to apply the new near clip plane value.
 
     # Get world space scale of Active 3D View Camera
@@ -300,7 +321,7 @@ def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=100.0, nearClip
                     {0}.lsx = 1 / {1}.sx / {2} * {3};
                     {0}.lsy = 1 / {1}.sy / {2} * {3};
                     {0}.lsz = 0;
-                    """.format(tlocShape, tlocGrp, depth**0.5, active3dViewCamWorldSpaceScale), object=tlocGrp)
+                    """.format(tlocShape, tlocGrp, depth, active3dViewCamWorldSpaceScale), object=tlocGrp)
 
     # Just for marking the Creation Frame
     mc.setKeyframe(tlocTrans+".rx", value=0, time=[currentTime])
@@ -313,31 +334,9 @@ def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=100.0, nearClip
     mc.setAttr(active3dViewCamShape+".nearClipPlane", nearClipPlaneStored)
 
 
-def pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, tlocTrans):
-    # Center3D on TLOC
-    center3d(active3dViewCamShape, active3dViewCamTrans, tlocTrans)
-    # Select TLOC
-    mc.select(tlocTrans)
-    mc.evalDeferred("import maya.cmds as mc;mc.outlinerEditor('outlinerPanel1', edit=True, showSelected=True)")
-    # Set Tool to "Drag Attr Context"
-    dragAttrContext(tlocTrans)
-
-
-def getClipboardText():
-    clipboard = QtWidgets.QApplication.clipboard()
-    text = clipboard.text()
-    return text
-
-
-def setClipboardText(text):
-    clipboard = QtWidgets.QApplication.clipboard()
-    clipboard.setText(text)
-
-
 def main():
-    # Delete Center3D nodes
-    if mc.objExists("*centroid*") == True:
-        mc.delete('centroid_*','*_Center3D_*')
+    if mc.objExists("*centroid*"):
+        mc.delete("*centroid*") # Delete Centroid and Center3D nodes
 
         lastParent = getClipboardText()
         if lastParent != "":
@@ -357,10 +356,7 @@ def main():
         createTloc(active3dViewCamShape, active3dViewCamTrans)
         return
     elif len(sel) == 1: # If a single item is selected...
-        try:
-            object_type = mc.objectType(mc.listRelatives(sel[0], fullPath=True, shapes=True)[0])
-        except:
-            object_type = None
+        object_type = mc.objectType(mc.listRelatives(sel[0], fullPath=True, shapes=True)[0]) or None # Get shape of selected object. If there is no shape pass None.
         if object_type == "locator" and "tloc" in sel[0]: # and it is TLOC. Jump to point triangulation mode(Center3D & Drag Attr Context).
             pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, sel[0])
             return

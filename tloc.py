@@ -356,7 +356,12 @@ def main():
         createTloc(active3dViewCamShape, active3dViewCamTrans)
         return
     elif len(sel) == 1: # If a single item is selected...
-        object_type = mc.objectType(mc.listRelatives(sel[0], fullPath=True, shapes=True)[0]) or None # Get shape of selected object. If there is no shape pass None.
+        try:
+            selShape = mc.listRelatives(sel[0], fullPath=True, shapes=True)[0] # Get selected object's shape node.
+            object_type = mc.objectType(selShape) # Get object type.
+        except:
+            object_type = "transform" # If there is no shape node pass "transform".
+
         if object_type == "locator" and "tloc" in sel[0]: # and it is TLOC. Jump to point triangulation mode(Center3D & Drag Attr Context).
             pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, sel[0])
             return

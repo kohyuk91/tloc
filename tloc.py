@@ -62,6 +62,7 @@ tloc.main()
 """
 
 # Versions
+# 0.0.5 - Does not require Qt.py anymore.
 # 0.0.4 - Script will run differently based on selection.
 # 0.0.3 - TLOC scale continuity.
 # 0.0.2 - No need to select depth attribute in channelbox.
@@ -71,24 +72,29 @@ tloc.main()
 import maya.cmds as mc
 import maya.OpenMaya as om
 import maya.OpenMayaUI as omui
+
 try:
-    from Qt import QtGui, QtWidgets, QtCore # Requires Qt.py for Maya 2016 and under.
-except:
-    from PySide2 import QtGui, QtWidgets, QtCore
+    from PySide import QtGui, QtCore
+    import PySide.QtGui as QtWidgets
+except ImportError:
+    from PySide2 import QtGui, QtCore, QtWidgets
 
 import random
 
 
-def center3d(active3dViewCamShape, active3dViewCamTrans, tlocTrans, zoom=0.2):
+def center3d(tlocTrans, zoom=0.2):
     """
     Centers the viewport to TLOC.
 
-    < Note >
     This may not work properly if the Image Plane's Aspect Ratio and Device Aspect Ratio(in Render Setting) does not match.
     Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 1920 X 1080 (1.778) --> O
     Image Plane Size: 1920 X 1080 (1.778)  and  Image Size: 960 X 540 (1.778) --> O
     Image Plane Size: 1920 X 1080 (1.778) and  Image Size: 3000 X 1500 (1.5) --> X
     """
+
+    # Get Active 3D View Camera
+    active3dViewCamShape, active3dViewCamTrans = getActive3dViewCam()
+
     # Set Imageplane to show in "All Views"
     try:
         active3dViewCamImgPlaneShape = mc.listRelatives(active3dViewCamShape, allDescendents=True, type='imagePlane')[0]
@@ -180,6 +186,10 @@ def center3d(active3dViewCamShape, active3dViewCamTrans, tlocTrans, zoom=0.2):
 
 
 def dragAttrContext(tlocTrans):
+    """
+    Set tool to Drag Attr Context.
+    Allows a user to manipulate TLOC's depth attribute by using a virtual slider within the viewport.
+    """
     dragAttrContextName = "dragAttrContext"
     if not mc.dragAttrContext(dragAttrContextName, ex=True):
         mc.dragAttrContext(dragAttrContextName)
@@ -197,9 +207,12 @@ def getActive3dViewCam():
     return active3dViewCamShape, active3dViewCamTrans
 
 
-def pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, tlocTrans):
+def pointTriangulationMode(tlocTrans):
+    """
+    Center3D on TLOC and set tool to Drag Attr Context.
+    """
     # Center3D on TLOC
-    center3d(active3dViewCamShape, active3dViewCamTrans, tlocTrans)
+    center3d(tlocTrans)
     # Select TLOC
     mc.select(tlocTrans)
     mc.evalDeferred("import maya.cmds as mc;mc.outlinerEditor('outlinerPanel1', edit=True, showSelected=True)")
@@ -218,13 +231,12 @@ def setClipboardText(text):
     clipboard.setText(text)
 
 
-def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=10, parent=""):
+def createTloc(depth=10, parent=""):
     """
     Creates "TLOC" and "Center3D camera".
     You can do point triangulation and quality check at the same time.
 
-    < Note >
-    - You might not see TLOC if the image plane is to close to the camera. Give the image plane's "Depth" a higher value to fix this problem.
+    You might not see TLOC if the image plane is to close to the camera. Give the image plane's "Depth" a higher value to fix this problem.
     """
     currentTime = int(mc.currentTime(q=True))
     indexList = [6,9,13,14,16,17,18]
@@ -328,13 +340,23 @@ def createTloc(active3dViewCamShape, active3dViewCamTrans, depth=10, parent=""):
 
 
     # Set to point triangulation mode
-    pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, tlocTrans)
+    pointTriangulationMode(tlocTrans)
 
     # Set Near Clip Plane back to stored value
     mc.setAttr(active3dViewCamShape+".nearClipPlane", nearClipPlaneStored)
 
 
 def main():
+    """
+    TLOC scripts exectutes differently based on scene state and selection.
+
+    1. If a "centroid" node exists, jump out of point triangulation mode.
+    2. (While looking through shot cam) If nothing is selected, create TLOC on cursor position, and jump to point triangulation mode.
+    3. (While looking through shot cam) If "one" TLOC is selected, jump to point triangulation mode.
+    4. (While looking through shot cam) If "one" image plane is selected, create TLOC on cursor position, and jump to point triangulation mode.
+    5. (While looking through shot cam) If "one" object besides TLOC or image plane is selected, create TLOC on cursor position, parent the TLOC GRP to selected object, and jump to point triangulation mode.
+    6. (While looking through shot cam) If "two or more" objects are selected, do nothing.
+    """
     if mc.objExists("*centroid*"):
         mc.delete("*centroid*") # Delete Centroid and Center3D nodes
 
@@ -346,30 +368,27 @@ def main():
         mc.select(clear=True)
         return
 
-    # Get Active 3D View Camera
-    active3dViewCamShape, active3dViewCamTrans = getActive3dViewCam()
-
     # Get selection
     sel = mc.ls(selection=True, long=True)
 
     if len(sel) == 0: # If nothing is selected and you press the TLOC hotkey, a new TLOC will be created.
-        createTloc(active3dViewCamShape, active3dViewCamTrans)
+        createTloc()
         return
     elif len(sel) == 1: # If a single item is selected...
         try:
-            selShape = mc.listRelatives(sel[0], fullPath=True, shapes=True)[0] # Get selected object's shape node.
+            selShape = mc.listRelatives(sel, fullPath=True, shapes=True) # Get selected object's shape node.
             object_type = mc.objectType(selShape) # Get object type.
         except:
             object_type = "transform" # If there is no shape node pass "transform".
 
         if object_type == "locator" and "tloc" in sel[0]: # and it is TLOC. Jump to point triangulation mode(Center3D & Drag Attr Context).
-            pointTriangulationMode(active3dViewCamShape, active3dViewCamTrans, sel[0])
+            pointTriangulationMode(sel[0])
             return
         elif object_type == "imagePlane": # and it is image plane. A new TLOC will be created.
-            createTloc(active3dViewCamShape, active3dViewCamTrans)
+            createTloc()
             return
         else: # and it is something other than TLOC. A new TLOC will be created and parented to the selected item.
-            createTloc(active3dViewCamShape, active3dViewCamTrans, parent=sel[0])
+            createTloc(parent=sel[0])
             return
     elif len(sel) > 1:
         mc.warning("Too many objects selected. Select 0 or 1 item.")

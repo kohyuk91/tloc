@@ -62,11 +62,11 @@ tloc.main()
 """
 
 # Versions
-# 0.0.5 - Does not require Qt.py anymore.
-# 0.0.4 - Script will run differently based on selection.
-# 0.0.3 - TLOC scale continuity.
+# 0.0.5 - TLOC scale continuity.
+# 0.0.4 - Does not require Qt.py anymore.
+# 0.0.3 - Script will run differently based on selection.
 # 0.0.2 - No need to select depth attribute in channelbox.
-# 0.0.1 - Initial Release
+# 0.0.1 - Project start
 
 
 import maya.cmds as mc
@@ -231,7 +231,7 @@ def setClipboardText(text):
     clipboard.setText(text)
 
 
-def createTloc(depth=10, parent=""):
+def createTloc(depth=10, parent="", tlocScale=1.0):
     """
     Creates "TLOC" and "Center3D camera".
     You can do point triangulation and quality check at the same time.
@@ -265,6 +265,8 @@ def createTloc(depth=10, parent=""):
     # Get Active 3D View Camera
     active3dViewCamShape, active3dViewCamTrans = getActive3dViewCam()
 
+    # Get world space scale of Active 3D View Camera
+    active3dViewCamWorldSpaceScale = mc.xform(active3dViewCamTrans, q=True, worldSpace=True, scale=True)[0] # Just return sx
 
     # Store Near Clip Plane value
     nearClipPlaneStored = mc.getAttr(active3dViewCamShape+".nearClipPlane")
@@ -272,9 +274,6 @@ def createTloc(depth=10, parent=""):
     # Temporarily set Near Clip Plane
     mc.setAttr(active3dViewCamShape+".nearClipPlane", depth)
     mc.refresh(force=True) # Need to refresh the viewport to apply the new near clip plane value.
-
-    # Get world space scale of Active 3D View Camera
-    active3dViewCamWorldSpaceScale = mc.xform(active3dViewCamTrans, q=True, worldSpace=True, scale=True)[0] # Just return sx
 
 
     # Get Cursor Position
@@ -324,16 +323,18 @@ def createTloc(depth=10, parent=""):
 
 
     # Set TLOC Depth & Scale
+    tlocInitScale = 50 # DO NOT TOUCH THIS. Manipulate scale with "tlocScale" param.
+
     mc.expression(s="""
                     {0}.sx = {1}.sx;
                     {0}.sy = {1}.sy;
                     {0}.sz = {1}.sz;
                     """.format(tlocGrp, tlocTrans), object=tlocGrp)
     mc.expression(s="""
-                    {0}.lsx = 1 / {1}.sx / {2} * {3};
-                    {0}.lsy = 1 / {1}.sy / {2} * {3};
+                    {0}.lsx = 1 / {1}.sx * {2} * {3} / {4} * {5};
+                    {0}.lsy = 1 / {1}.sy * {2} * {3} / {4} * {5};
                     {0}.lsz = 0;
-                    """.format(tlocShape, tlocGrp, depth, active3dViewCamWorldSpaceScale), object=tlocGrp)
+                    """.format(tlocShape, tlocGrp, active3dViewCamWorldSpaceScale, depth, tlocInitScale, tlocScale), object=tlocGrp)
 
     # Just for marking the Creation Frame
     mc.setKeyframe(tlocTrans+".rx", value=0, time=[currentTime])
@@ -387,7 +388,7 @@ def main():
         elif object_type == "imagePlane": # and it is image plane. A new TLOC will be created.
             createTloc()
             return
-        else: # and it is something other than TLOC. A new TLOC will be created and parented to the selected item.
+        else: # and it is something other than TLOC or Image plane(e.g. Object Point Group). A new TLOC will be created and parented to the selected object.
             createTloc(parent=sel[0])
             return
     elif len(sel) > 1:

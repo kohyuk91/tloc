@@ -64,7 +64,7 @@ tloc.main()
 # Versions
 # 0.0.5 - TLOC scale continuity.
 # 0.0.4 - Does not require Qt.py anymore.
-# 0.0.3 - Script will run differently based on selection.
+# 0.0.3 - Script will run differently based on selection. Store parent.
 # 0.0.2 - No need to select depth attribute in channelbox.
 # 0.0.1 - Project start
 
@@ -72,6 +72,7 @@ tloc.main()
 import maya.cmds as mc
 import maya.OpenMaya as om
 import maya.OpenMayaUI as omui
+
 
 try:
     from PySide import QtGui, QtCore
@@ -82,7 +83,7 @@ except ImportError:
 import random
 
 
-def center3d(tlocTrans, zoom=0.2):
+def center3d(tlocTrans, zoom=0.15):
     """
     Centers the viewport to TLOC.
 
@@ -231,13 +232,27 @@ def setClipboardText(text):
     clipboard.setText(text)
 
 
-def createTloc(depth=10, parent="", tlocScale=1.0):
+def getObjectType(sel):
+    try:
+        selShape = mc.listRelatives(sel, fullPath=True, shapes=True) # Get selected object's shape node.
+        objectType = mc.objectType(selShape) # Get object type.
+    except:
+        objectType = "transform" # If there is no shape node pass "transform".
+    return objectType
+
+
+def createTloc(parent=""):
     """
     Creates "TLOC" and "Center3D camera".
     You can do point triangulation and quality check at the same time.
 
     You might not see TLOC if the image plane is to close to the camera. Give the image plane's "Depth" a higher value to fix this problem.
+
+    Active View Camera's center of interest determines TLOC's initial depth.
+
+    Active View Camera's locator scale determines TLOC's initial scale.
     """
+
     currentTime = int(mc.currentTime(q=True))
     indexList = [6,9,13,14,16,17,18]
     random_index = random.choice(indexList)
@@ -247,6 +262,17 @@ def createTloc(depth=10, parent="", tlocScale=1.0):
     tlocTrans = mc.spaceLocator(name="tloc_{}f_#".format(currentTime))[0]
     tlocShape = mc.listRelatives(tlocTrans, shapes=True)[0]
     tlocGrp = mc.group(tlocTrans, name="{}_grp".format(tlocTrans))
+
+
+    # Get Active 3D View Camera
+    active3dViewCamShape, active3dViewCamTrans = getActive3dViewCam()
+
+    # Active 3D View Camera's centerOfInterest value will be TLOC's depth
+    depth = mc.getAttr(active3dViewCamShape+".centerOfInterest")
+
+    # Active 3D View Camera's centerOfInterest value will be TLOC's scale
+    tlocScale = mc.getAttr(active3dViewCamShape+".locatorScale")
+
 
     # Add Depth Attribute to TLOC
     mc.addAttr(tlocTrans, shortName="depth", longName="Depth", attributeType="float", defaultValue=depth)
@@ -261,9 +287,6 @@ def createTloc(depth=10, parent="", tlocScale=1.0):
     mc.setAttr(tlocShape+".overrideEnabled", 1)
     mc.setAttr(tlocShape+".overrideColor", random_index)
 
-
-    # Get Active 3D View Camera
-    active3dViewCamShape, active3dViewCamTrans = getActive3dViewCam()
 
     # Get world space scale of Active 3D View Camera
     active3dViewCamWorldSpaceScale = mc.xform(active3dViewCamTrans, q=True, worldSpace=True, scale=True)[0] # Just return sx
@@ -322,25 +345,23 @@ def createTloc(depth=10, parent="", tlocScale=1.0):
     """
 
 
-    # Set TLOC Depth & Scale
+    # Connect TLOC and TLOC GRP scale
+    mc.connectAttr(tlocTrans+".s", tlocGrp+".s")
+
     tlocInitScale = 50 # DO NOT TOUCH THIS. Manipulate scale with "tlocScale" param.
 
-    mc.expression(s="""
-                    {0}.sx = {1}.sx;
-                    {0}.sy = {1}.sy;
-                    {0}.sz = {1}.sz;
-                    """.format(tlocGrp, tlocTrans), object=tlocGrp)
+    # Expression for TLOC scale continuity.
     mc.expression(s="""
                     {0}.lsx = 1 / {1}.sx * {2} * {3} / {4} * {5};
                     {0}.lsy = 1 / {1}.sy * {2} * {3} / {4} * {5};
                     {0}.lsz = 0;
                     """.format(tlocShape, tlocGrp, active3dViewCamWorldSpaceScale, depth, tlocInitScale, tlocScale), object=tlocGrp)
 
+
     # Just for marking the Creation Frame
     mc.setKeyframe(tlocTrans+".rx", value=0, time=[currentTime])
 
-
-    # Set to point triangulation mode
+    # Jump to point triangulation mode
     pointTriangulationMode(tlocTrans)
 
     # Set Near Clip Plane back to stored value
@@ -358,6 +379,7 @@ def main():
     5. (While looking through shot cam) If "one" object besides TLOC or image plane is selected, create TLOC on cursor position, parent the TLOC GRP to selected object, and jump to point triangulation mode.
     6. (While looking through shot cam) If "two or more" objects are selected, do nothing.
     """
+
     if mc.objExists("*centroid*"):
         mc.delete("*centroid*") # Delete Centroid and Center3D nodes
 
@@ -376,16 +398,11 @@ def main():
         createTloc()
         return
     elif len(sel) == 1: # If a single item is selected...
-        try:
-            selShape = mc.listRelatives(sel, fullPath=True, shapes=True) # Get selected object's shape node.
-            object_type = mc.objectType(selShape) # Get object type.
-        except:
-            object_type = "transform" # If there is no shape node pass "transform".
-
-        if object_type == "locator" and "tloc" in sel[0]: # and it is TLOC. Jump to point triangulation mode(Center3D & Drag Attr Context).
+        objectType = getObjectType(sel)
+        if objectType == "locator" and "tloc" in sel[0]: # and it is TLOC. Jump to point triangulation mode(Center3D & Drag Attr Context).
             pointTriangulationMode(sel[0])
             return
-        elif object_type == "imagePlane": # and it is image plane. A new TLOC will be created.
+        elif objectType == "imagePlane": # and it is image plane. A new TLOC will be created.
             createTloc()
             return
         else: # and it is something other than TLOC or Image plane(e.g. Object Point Group). A new TLOC will be created and parented to the selected object.

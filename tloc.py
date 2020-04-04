@@ -29,7 +29,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #
-# Shout out to Frank Illing for the "World Space to Image Space" expression.
+# Shout out to Frank Illing for the "World Space to Image Space" formula.
 #
 
 # Documentation
@@ -104,12 +104,12 @@ def center3d(tlocTrans, zoom=0.15):
         active3dViewCamImgPlaneShape = None
 
     # Create Centroid
-    centroidLoc = mc.spaceLocator(name='centroid_#')[0]
-    mc.setAttr(centroidLoc+'.v', 0)
-    mc.pointConstraint(tlocTrans, centroidLoc, maintainOffset=False)
+    center3dLoc = mc.spaceLocator(name='center3d_#')[0]
+    mc.setAttr(center3dLoc+'.v', 0)
+    mc.pointConstraint(tlocTrans, center3dLoc, maintainOffset=False)
 
     # Create Center3D Camera
-    center3dCam = mc.camera(name=active3dViewCamTrans + '_Center3D_' + centroidLoc)[0]
+    center3dCam = mc.camera(name=active3dViewCamTrans + center3dLoc)[0]
     center3dCamTrans = mc.ls(mc.parent(center3dCam, active3dViewCamTrans, relative=True), long=True)[0]
     center3dCamShape = mc.listRelatives(center3dCamTrans, shapes=True, fullPath=True)[0]
 
@@ -179,7 +179,7 @@ def center3d(tlocTrans, zoom=0.15):
     exp += '    return {$resultX, $resultY};\n'
     exp += '};\n'
 
-    exp += 'float $xy[] = cWorldSpaceToImageSpace("' + active3dViewCamTrans +'", {'+ centroidLoc +'.translateX,'+centroidLoc+'.translateY,'+centroidLoc+'.translateZ});\n'
+    exp += 'float $xy[] = cWorldSpaceToImageSpace("' + active3dViewCamTrans +'", {'+ center3dLoc +'.translateX,'+center3dLoc+'.translateY,'+center3dLoc+'.translateZ});\n'
     exp += center3dCamShape + '.horizontalFilmOffset = ($xy[0] *' + active3dViewCamShape + '.hfa)/2 ;\n'
     exp += center3dCamShape + '.verticalFilmOffset = ($xy[1] *'+ active3dViewCamShape + '.vfa)/2 ;\n'
 
@@ -248,9 +248,9 @@ def createTloc(parent=""):
 
     You might not see TLOC if the image plane is to close to the camera. Give the image plane's "Depth" a higher value to fix this problem.
 
-    Active View Camera's center of interest determines TLOC's initial depth.
+    Active View Camera's centerOfInterest determines TLOC's initial depth.
 
-    Active View Camera's locator scale determines TLOC's initial scale.
+    Active View Camera's locatorScale determines TLOC's initial scale.
     """
 
     currentTime = int(mc.currentTime(q=True))
@@ -267,15 +267,15 @@ def createTloc(parent=""):
     # Get Active 3D View Camera
     active3dViewCamShape, active3dViewCamTrans = getActive3dViewCam()
 
-    # Active 3D View Camera's centerOfInterest value will be TLOC's depth
-    depth = mc.getAttr(active3dViewCamShape+".centerOfInterest")
+    # Active View Camera's centerOfInterest determines TLOC's initial depth.
+    initDepth = mc.getAttr(active3dViewCamShape+".centerOfInterest")
 
-    # Active 3D View Camera's centerOfInterest value will be TLOC's scale
+    # Active View Camera's locatorScale determines TLOC's initial scale.
     tlocScale = mc.getAttr(active3dViewCamShape+".locatorScale")
 
 
     # Add Depth Attribute to TLOC
-    mc.addAttr(tlocTrans, shortName="depth", longName="Depth", attributeType="float", defaultValue=depth)
+    mc.addAttr(tlocTrans, shortName="depth", longName="Depth", attributeType="float", defaultValue=initDepth)
     mc.setAttr(tlocTrans+".depth", keyable=True)
 
     # Connect Depth Attribute to ScaleXYZ
@@ -295,7 +295,7 @@ def createTloc(parent=""):
     nearClipPlaneStored = mc.getAttr(active3dViewCamShape+".nearClipPlane")
 
     # Temporarily set Near Clip Plane
-    mc.setAttr(active3dViewCamShape+".nearClipPlane", depth)
+    mc.setAttr(active3dViewCamShape+".nearClipPlane", initDepth)
     mc.refresh(force=True) # Need to refresh the viewport to apply the new near clip plane value.
 
 
@@ -348,17 +348,17 @@ def createTloc(parent=""):
     # Connect TLOC and TLOC GRP scale
     mc.connectAttr(tlocTrans+".s", tlocGrp+".s")
 
-    tlocInitScale = 50 # DO NOT TOUCH THIS. Manipulate scale with "tlocScale" param.
+    tlocInitScale = 50 # DO NOT TOUCH THIS. Manipulate scale with "tlocScale(locatorScale)" param.
 
     # Expression for TLOC scale continuity.
     mc.expression(s="""
                     {0}.lsx = 1 / {1}.sx * {2} * {3} / {4} * {5};
                     {0}.lsy = 1 / {1}.sy * {2} * {3} / {4} * {5};
                     {0}.lsz = 0;
-                    """.format(tlocShape, tlocGrp, active3dViewCamWorldSpaceScale, depth, tlocInitScale, tlocScale), object=tlocGrp)
+                    """.format(tlocShape, tlocGrp, active3dViewCamWorldSpaceScale, initDepth, tlocInitScale, tlocScale), object=tlocGrp)
 
 
-    # Just for marking the Creation Frame
+    # Just for marking the Reference Frame
     mc.setKeyframe(tlocTrans+".rx", value=0, time=[currentTime])
 
     # Jump to point triangulation mode
@@ -380,8 +380,8 @@ def main():
     6. (While looking through shot cam) If "two or more" objects are selected, do nothing.
     """
 
-    if mc.objExists("*centroid*"):
-        mc.delete("*centroid*") # Delete Centroid and Center3D nodes
+    if mc.objExists("*center3d*"):
+        mc.delete("*center3d*") # Delete all Center3D nodes
 
         lastParent = getClipboardText()
         if lastParent != "":
@@ -399,14 +399,14 @@ def main():
         return
     elif len(sel) == 1: # If a single item is selected...
         objectType = getObjectType(sel)
-        if objectType == "locator" and "tloc" in sel[0]: # and it is TLOC. Jump to point triangulation mode(Center3D & Drag Attr Context).
-            pointTriangulationMode(sel[0])
+        if objectType == "locator" and "tloc" in sel[0]: # and it is a TLOC.
+            pointTriangulationMode(sel[0]) # Jump to point triangulation mode.
             return
-        elif objectType == "imagePlane": # and it is image plane. A new TLOC will be created.
-            createTloc()
+        elif objectType == "imagePlane": # and it is an image plane.
+            createTloc() #  A new TLOC will be created.
             return
-        else: # and it is something other than TLOC or Image plane(e.g. Object Point Group). A new TLOC will be created and parented to the selected object.
-            createTloc(parent=sel[0])
+        else: # and it is something other than TLOC or Image plane(e.g. Object Point Group).
+            createTloc(parent=sel[0]) #  A new TLOC will be created and parented to the selected object.
             return
     elif len(sel) > 1:
         mc.warning("Too many objects selected. Select 0 or 1 item.")

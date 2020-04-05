@@ -62,6 +62,7 @@ tloc.main()
 """
 
 # Versions
+# 0.1.0 - Initial Release (2020.04.05)
 # 0.0.5 - TLOC scale continuity.
 # 0.0.4 - Does not require Qt.py anymore.
 # 0.0.3 - Script will run differently based on selection. Store parent.

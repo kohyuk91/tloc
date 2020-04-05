@@ -3,7 +3,8 @@
 ## What does it do
 "T"riangulate + "Loc"ator. TLOC helps you to triangulate points with ease.
 
-[![](http://img.youtube.com/vi/GUCYcqgs2WE/0.jpg)](http://www.youtube.com/watch?v=GUCYcqgs2WE "")
+> [![](http://img.youtube.com/vi/DLYFI9C9MoQ/0.jpg)](http://www.youtube.com/watch?v=DLYFI9C9MoQ "TLOC in depth guide")</br>
+> [Youtube - TLOC Guide](https://youtu.be/DLYFI9C9MoQ)
 
 ## Installation
 1. Copy **tloc.py** to:

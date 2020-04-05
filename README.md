@@ -13,7 +13,6 @@
         > $HOME/maya/scripts
     - Linux
         > $HOME/maya/scripts
-    - For Maya 2016 and under, must install **[Qt.py(Just use the latest release)](https://github.com/mottosso/Qt.py/releases)**
 1. In Maya
     1. Open **Hotkey Editor** (Windows > Settings/Preferences > Hotkey Editor)
     1. Create a new 'Runtime Command'

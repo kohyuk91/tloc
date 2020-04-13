@@ -412,3 +412,6 @@ def main():
     elif len(sel) > 1:
         mc.warning("Too many objects selected. Select 0 or 1 item.")
         return
+
+if __name__ == "__main__":
+    main()
